@@ -1,0 +1,242 @@
+GoldPDV Sync Service - API Endpoints
+====================================
+
+Base URL
+- Todas as rotas expostas via HTTP usam o prefixo `/api/v1`.
+- Exemplo local: `http://localhost:3000/api/v1`.
+
+Autenticacao
+- Tokens JWT obtidos em `POST /api/v1/auth/login`.
+- Header obrigatorio (exceto rotas publicas): `Authorization: Bearer <accessToken>`
+- Perfis disponiveis: `admin`, `office`, `pdv`.
+- Tokens expiram em 12 horas por padrao (`JWT_EXPIRES_IN=12h`).
+
+1. Servico / Health Check
+-------------------------
+- **GET /**  
+  Rota publica; retorna status do servico em JSON padronizado.
+
+- **GET /api/v1**  
+  Health-check principal. Mesma resposta padronizada do endpoint raiz.
+
+2. Autenticacao
+---------------
+- **POST /api/v1/auth/login** *(publica)*  
+  Body:
+  ```json
+  {
+    "login": "codigo-ou-email",
+    "password": "senhaEmTexto"
+  }
+  ```
+  Retorna `tokenType`, `accessToken`, `expiresIn` e dados do usuario.
+
+- **PATCH /api/v1/auth/password** *(requer token)*  
+  Body:
+  ```json
+  {
+    "currentPassword": "senhaAtual",
+    "newPassword": "NovaSenhaForte"
+  }
+  ```
+  Valida a senha atual (plaintext ou hash legado) e grava a nova senha com bcrypt.
+
+- **GET /api/v1/auth/me** *(requer token)*  
+  Retorna os dados do usuario autenticado (id, code, name, email, role e permissoes derivadas).
+
+3. Sincronizacao Dinamica
+-------------------------
+Rotas genericas para todos os cadastros e movimentacoes mapeados a partir do `schema.prisma`.
+
+- **GET /api/v1/sync/{entity}**  
+  Retorna registros paginados da entidade informada, aplicando filtros de versao (`updatedAt`, `dtalteracao`, etc.) e soft delete (`deletedAt`, `isdeleted`).  
+  Query params:
+  - `since` (ISO 8601, opcional): filtra registros com atualizacao igual ou posterior.
+  - `limit` (1-500, opcional, padrao 100).
+  - `offset` (>= 0, opcional, padrao 0).  
+  Resposta:
+  ```json
+  {
+    "success": true,
+    "message": "Registros de <entity> recuperados com sucesso.",
+    "data": {
+      "entity": "<slug>",
+      "since": "...",
+      "limit": 100,
+      "offset": 0,
+      "count": <n>,
+      "records": [ ... ]
+    }
+  }
+  ```
+
+- **POST /api/v1/sync/{entity}**  
+  Recebe lotes para insercao (createMany com `skipDuplicates`). Campos de versao/delecao sao preenchidos automaticamente quando ausentes.  
+  Body:
+  ```json
+  {
+    "idempotency_key": "uuid-123",
+    "records": [
+      { "...": "..." },
+      { "...": "..." }
+    ],
+    "source": "pdv-01",
+    "cursor": "opaque-id"
+  }
+  ```
+  Resposta:
+  ```json
+  {
+    "success": true,
+    "message": "Payload de <entity> processado com sucesso.",
+    "data": {
+      "entity": "<slug>",
+      "received": <total_enviado>,
+      "inserted": <total_salvo>,
+      "source": "...",
+      "cursor": "...",
+      "processedAt": "..."
+    }
+  }
+  ```
+  Status codes:
+  - `201 Created` sucesso na ingestao.
+  - `409 Conflict` quando `idempotency_key` ja foi processado.
+  - `400 Bad Request` para falhas de validacao.
+  - `500 Internal Server Error` para erros inesperados.
+
+Aliases e Entidades Suportadas
+------------------------------
+Os nomes abaixo podem ser usados em `{entity}`. Aliases em colchetes indicam slugs amigaveis adicionais.
+
+Cadastros:
+- `t_itens` [`items`]
+- `t_gritens`
+- `t_subgr`
+- `t_formulas`
+- `t_emp`
+- `t_for`
+- `t_cli`
+- `t_users`
+- `t_motoristas`
+- `t_vende`
+- `t_cst`
+- `t_cfop`
+- `t_bco`
+- `t_tpgto`
+- `t_fpgto`
+- `t_fpgto2`
+- `t_placon`
+- `t_equip`
+- `t_equipcli`
+- `t_equipamento`
+- `t_especialidade`
+- `t_frota`
+- `t_funcionario`
+- `t_imovel`
+- `t_clasfis`
+- `t_config`
+- `t_custocid`
+
+Movimentacao:
+- `t_vendas` [`sales`]
+- `t_itsven`
+- `t_comanda`
+- `t_comandait`
+- `t_cclasstrib`
+- `t_caracteristica`
+- `t_acessequip`
+- `t_automovel`
+- `t_acessorio`
+- `t_cargo`
+- `t_locacao`
+- `t_locacaochk`
+- `t_lancapicms`
+- `t_lancappiscofins`
+- `t_cxabe`
+- `t_pgcaixa`
+- `t_cxdoc`
+- `t_pag`
+- `t_pagb` [`payables`]
+- `t_rec` [`receivables`]
+- `t_recb`
+- `t_fluxocx`
+- `t_debcrecli`
+- `t_movest`
+- `t_nfs`
+- `t_itnfs`
+- `t_pdc`
+- `t_itpdc`
+- `t_pedcmp` [`purchases`]
+- `t_itpedcmp`
+- `t_comven`
+- `t_lotes`
+- `t_lote`
+- `t_loteenv`
+- `t_lvsai`
+- `t_lvsaiitem`
+- `t_lvent`
+- `t_lventitem`
+- `t_lventref`
+- `t_formacao`
+- `t_orc`
+- `t_itorc`
+- `t_marca`
+- `t_marcaautomovel`
+- `t_midia`
+- `t_motcham`
+- `t_obs`
+- `t_obsagup`
+- `t_os`
+- `t_ositens`
+- `t_zona`
+- `t_visitas`
+- `t_visitascli`
+- `t_veiculos`
+- `t_usere`
+- `t_usersn`
+- `t_undmed`
+- `t_cid`
+- `t_uf`
+- `t_bai`
+- `t_baixaloc`
+- `t_transf`
+- `t_ittransf`
+- `t_tipoequipamento`
+- `t_tecnico`
+- `t_serv`
+- `t_socio`
+- `t_solicitacao`
+- `t_rotatec`
+- `t_rotatecit`
+- `t_saldoit`
+- `t_romfre`
+- `t_romret`
+- `t_req`
+- `t_itsreq`
+- `t_reqven`
+- `t_retbco`
+- `t_rettit`
+- `t_reg_producao`
+- `t_recrepa`
+- `t_recprorrog`
+- `t_reclot`
+- `t_recibo`
+- `t_reclacli`
+- `t_receitas`
+- `t_proc`
+- `t_procreclacli`
+- `t_printers`
+- `t_pedimport`
+- `t_pedidos_fab`
+- `t_pagbfunc`
+- `t_outroslan`
+- `t_outroslanfiscais`
+- `t_mputilizada`
+- `t_modelo`
+- `t_modeloautomovel`
+
+Documentacao Interativa
+-----------------------
+- **GET /docs**  
+  Interface Swagger com todos os endpoints versionados e exemplos de request/response.
